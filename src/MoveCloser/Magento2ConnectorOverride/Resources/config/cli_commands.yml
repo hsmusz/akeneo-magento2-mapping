@@ -1,0 +1,12 @@
+services:
+    MoveCloser\Magento2ConnectorOverride\Command\ReconcileAttributeOptionMappingCommand:
+        tags:
+            - { name: 'console.command' }
+        arguments:
+            - '@database_connection'
+
+    MoveCloser\Magento2ConnectorOverride\Command\ReconcileCategoryMappingCommand:
+        tags:
+            - { name: 'console.command' }
+        arguments:
+            - '@database_connection'

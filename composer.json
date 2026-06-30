@@ -1,0 +1,21 @@
+{
+  "name": "hsmusz/akeneo-magento2-mapping",
+  "description": "Akeneo → Webkul Magento2 connector: mapping reconciliation commands and writer overrides that fix cross-brand category mappings, option-mapping drift and product-export self-poisoning.",
+  "type": "symfony-bundle",
+  "license": "proprietary",
+  "require": {
+    "php": "8.1.*",
+    "akeneo/pim-community-dev": "^7.0.0",
+    "webkul/magento2bundle": "*"
+  },
+  "autoload": {
+    "psr-4": {
+      "MoveCloser\\Magento2ConnectorOverride\\": "src/MoveCloser/Magento2ConnectorOverride/"
+    }
+  },
+  "config": {
+    "allow-plugins": {
+      "symfony/flex": true
+    }
+  }
+}
