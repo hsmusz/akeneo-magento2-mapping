@@ -70,4 +70,21 @@ class ContextAwareCategoryWriter extends CategoryWriter
             )
         );
     }
+
+    /**
+     * Neutralizuje webkulowy fallback, który przy błędzie tworzenia kategorii
+     * (np. „URL key already exists") pobiera całe drzewo Magento i przypisuje
+     * mapowania po NAZWIE (url-key slug). Gdy nazwy kategorii się powtarzają
+     * (Pharmaceris: wiele „Pielęgnacja"/„Oczyszczanie"), różne kategorie Magento
+     * trafiają na ten sam kod Akeneo i nadpisują poprawne mapowania błędnym,
+     * jednoimiennym id — psując przypięcie produktów do właściwej kategorii.
+     *
+     * Źródłem prawdy jest mapowanie po ścieżce (magento2:reconcile-category-mappings),
+     * więc ten fallback celowo nic nie robi — pojedyncza nieutworzona kategoria
+     * daje warning, ale nie zatruwa pozostałych mapowań.
+     */
+    protected function getCategoriesAndAddMappings()
+    {
+        // intentionally a no-op — see method docblock
+    }
 }
