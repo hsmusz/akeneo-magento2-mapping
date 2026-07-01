@@ -132,7 +132,17 @@ class ReconcileAttributeOptionMappingCommand extends Command
                     $externalId = trim((string) $row['externalId']);
 
                     if ($externalId !== '' && isset($validIds[$externalId])) {
-                        $okCount++;
+                        // The mapped id exists in the attribute, but verify it is the RIGHT option.
+                        // matchBySlug returns a single id only when exactly one Magento option's
+                        // label matches this code; if that id differs from the mapped one, the
+                        // mapping points at the wrong option (valid id, wrong label) and would
+                        // collide on export ("... already exists"). Repair it.
+                        if (is_string($candidate) && $candidate !== $externalId) {
+                            $updates[] = ['id' => (int) $row['id'], 'code' => (string) $row['code'], 'old' => $externalId, 'new' => $candidate];
+                        } else {
+                            $okCount++;
+                        }
+
                         continue;
                     }
 
