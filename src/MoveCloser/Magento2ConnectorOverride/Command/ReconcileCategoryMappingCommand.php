@@ -211,8 +211,21 @@ class ReconcileCategoryMappingCommand extends Command
     private function defaultLocale(array $credential): ?string
     {
         $resources = json_decode((string) ($credential['resources'] ?? ''), true);
+        if (!is_array($resources)) {
+            return null;
+        }
 
-        return is_array($resources) && !empty($resources['defaultLocale']) ? (string) $resources['defaultLocale'] : null;
+        // The connector names Magento categories with the ADMIN store-view locale
+        // (storeMapping.allStoreView.locale), which the BaseWriter uses as its
+        // defaultLocale — this is NOT necessarily the credential's defaultLocale
+        // (e.g. Pharmaceris: defaultLocale=uk_UA but admin names are pl_PL). Match
+        // against the admin locale so --locale is rarely needed.
+        $adminLocale = $resources['storeMapping']['allStoreView']['locale'] ?? null;
+        if (!empty($adminLocale)) {
+            return (string) $adminLocale;
+        }
+
+        return !empty($resources['defaultLocale']) ? (string) $resources['defaultLocale'] : null;
     }
 
     /**
