@@ -257,10 +257,14 @@ class ReconcileCategoryMappingCommand extends Command
         foreach ($this->connection->fetchAllAssociative('SELECT foreign_key, locale, label FROM pim_catalog_category_translation') as $t) {
             $labels[(int) $t['foreign_key']][(string) $t['locale']] = (string) $t['label'];
         }
+        // Mirror the connector's category naming (CategoryWriter): it uses the
+        // label in the match locale, and falls back to the CODE when that label
+        // is empty/missing. A translation row can exist with a NULL label (cast
+        // to ''), so we must treat empty as missing (?? only catches unset keys).
         $labelOf = function (int $id) use ($labels, $byId, $locale): string {
             $loc = $labels[$id] ?? [];
 
-            return $loc[$locale] ?? (reset($loc) ?: $byId[$id]['code']);
+            return !empty($loc[$locale]) ? $loc[$locale] : $byId[$id]['code'];
         };
         if ($rootId !== null) {
             $rootLabel = $labelOf($rootId);
