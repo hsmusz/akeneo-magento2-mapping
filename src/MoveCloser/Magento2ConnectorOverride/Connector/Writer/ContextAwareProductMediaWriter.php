@@ -241,7 +241,75 @@ class ContextAwareProductMediaWriter extends ProductMediaWriter
             }
         }
 
+        $this->applyRoleFallback($markers);
         $this->postMarkers($sku, $markers, $this->storeScopeFor($scopeLocales, $localeToStoreCodes));
+    }
+
+    /**
+     * Guarantees each store view that shows any image also has a base/small/thumbnail image.
+     *
+     * Roles come from the attribute mapped as base/small/thumbnail (e.g. Image_ecommerce_1). When a
+     * locale has no value for that attribute, none of its images carries the role there; in that case
+     * the FIRST image of the locale (first marker for the store, in gallery order) is promoted to it.
+     * A non-localized image (store_code 'all') that already carries a role satisfies it for every
+     * store, so localized fallback is skipped for that role.
+     *
+     * @param list<array<string, mixed>> $markers
+     */
+    private function applyRoleFallback(array &$markers): void
+    {
+        $roles = ['is_base', 'is_small', 'is_thumbnail'];
+
+        $byStore = [];
+
+        foreach ($markers as $index => $marker) {
+            $byStore[$marker['store_code'] ?? 'all'][] = $index;
+        }
+
+        // Non-localized ("all") images first: promote the first one to any role none of them carry,
+        // then treat that role as provided for every store view.
+        $allProvides = array_fill_keys($roles, false);
+
+        if (!empty($byStore['all'])) {
+            foreach ($roles as $role) {
+                foreach ($byStore['all'] as $index) {
+                    if (!empty($markers[$index][$role])) {
+                        $allProvides[$role] = true;
+                        break;
+                    }
+                }
+
+                if (!$allProvides[$role]) {
+                    $markers[$byStore['all'][0]][$role] = true;
+                    $allProvides[$role] = true;
+                }
+            }
+        }
+
+        foreach ($byStore as $storeCode => $indexes) {
+            if ($storeCode === 'all') {
+                continue;
+            }
+
+            foreach ($roles as $role) {
+                if ($allProvides[$role]) {
+                    continue;
+                }
+
+                $has = false;
+
+                foreach ($indexes as $index) {
+                    if (!empty($markers[$index][$role])) {
+                        $has = true;
+                        break;
+                    }
+                }
+
+                if (!$has) {
+                    $markers[$indexes[0]][$role] = true;
+                }
+            }
+        }
     }
 
     /**

@@ -38,6 +38,33 @@ class ContextAwareProductWriter extends ProductWriter
     /**
      * {@inheritdoc}
      *
+     * Last-resort name fallback. The connector requires the default locale (pl_PL) in every job, but a
+     * product may have no pl_PL data at all - and even the configured fallback name attribute is empty
+     * for that locale - so Magento rejects the save with "The Product Name attribute value is empty".
+     * When the name is still empty at this point, fall back to the SKU so the product saves cleanly
+     * (the SKU is the PIM "ID (NIE EDYTOWAC)" field, always present and unique). The pl_PL name is
+     * never shown for products that are not in the PL website, and real per-store names still win.
+     *
+     * @param array<string, mixed> $productData
+     * @param mixed                $parent
+     * @param string               $storeViewCode
+     */
+    protected function addProduct($productData, $parent, $storeViewCode)
+    {
+        if (
+            isset($productData[self::AKENEO_ENTITY_NAME]) && is_array($productData[self::AKENEO_ENTITY_NAME])
+            && empty($productData[self::AKENEO_ENTITY_NAME]['name'])
+            && !empty($productData[self::AKENEO_ENTITY_NAME]['sku'])
+        ) {
+            $productData[self::AKENEO_ENTITY_NAME]['name'] = $productData[self::AKENEO_ENTITY_NAME]['sku'];
+        }
+
+        return parent::addProduct($productData, $parent, $storeViewCode);
+    }
+
+    /**
+     * {@inheritdoc}
+     *
      * Mirrors the parent implementation for date/simple/metric attributes; only
      * the select/multiselect branch is hardened against unmapped options.
      *
