@@ -10,3 +10,9 @@ services:
             - { name: 'console.command' }
         arguments:
             - '@database_connection'
+
+    MoveCloser\Magento2ConnectorOverride\Command\ReconcileMediaMappingCommand:
+        tags:
+            - { name: 'console.command' }
+        arguments:
+            - '@database_connection'
