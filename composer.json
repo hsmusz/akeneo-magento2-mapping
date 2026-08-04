@@ -5,7 +5,7 @@
   "license": "proprietary",
   "require": {
     "php": "8.1.*",
-    "akeneo/pim-community-dev": "^7.0.0",
+    "akeneo/pim-community-dev": "^7.0.0||^2026.0",
     "webkul/magento2bundle": "*"
   },
   "autoload": {
