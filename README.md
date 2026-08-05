@@ -79,6 +79,6 @@ reconcile-category-mappings --apply        # PH: add --locale pl_PL
 
 ## Requirements
 
-- PHP 8.1
+- PHP 8.1 - 8.3
 - `akeneo/pim-community-dev` ^7.0
 - `webkul/magento2bundle`
