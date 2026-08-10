@@ -8,6 +8,7 @@ use MoveCloser\Magento2ConnectorOverride\Connector\Processor\ContextAwareProduct
 use MoveCloser\Magento2ConnectorOverride\Connector\Writer\ContextAwareCategoryWriter;
 use MoveCloser\Magento2ConnectorOverride\Connector\Writer\ContextAwareProductMediaWriter;
 use MoveCloser\Magento2ConnectorOverride\Connector\Writer\ContextAwareProductWriter;
+use MoveCloser\Magento2ConnectorOverride\Services\ContextAwareMagento2Connector;
 use Symfony\Component\DependencyInjection\Compiler\CompilerPassInterface;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 
@@ -27,6 +28,7 @@ class OverrideWebkulWritersPass implements CompilerPassInterface
         'webkul_magento2.writer.product.api'                            => ContextAwareProductWriter::class,
         'webkul_magento2.writer.product_media.api'                      => ContextAwareProductMediaWriter::class,
         'webkul_magento2.processor.magento_normalization.product_media' => ContextAwareProductMediaProcessor::class,
+        'magento2.connector.service'                                   => ContextAwareMagento2Connector::class,
     ];
 
     public function process(ContainerBuilder $container): void
