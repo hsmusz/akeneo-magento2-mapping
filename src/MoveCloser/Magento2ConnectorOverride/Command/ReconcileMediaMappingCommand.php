@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MoveCloser\Magento2ConnectorOverride\Command;
 
 use Doctrine\DBAL\Connection;
+use MoveCloser\Magento2ConnectorOverride\Media\MediaFileName;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -140,9 +141,9 @@ class ReconcileMediaMappingCommand extends Command
                 }
 
                 $name = basename((string) $item['file']);
-                $clean = preg_replace('/_\d+(\.[^.]+)$/', '$1', $name);
+                $clean = MediaFileName::withoutCollisionSuffix($name);
 
-                if (is_string($clean) && $clean !== $name && isset($expectedNames[$clean]) && !isset($seen[$clean])) {
+                if ($clean !== $name && isset($expectedNames[$clean]) && !isset($seen[$clean])) {
                     foreach (array_keys($expectedNames[$clean]) as $locale) {
                         $rows[] = [$apiUrlKey, (string) $sku, $clean, (int) $item['id'], (string) $locale];
                     }
@@ -150,6 +151,41 @@ class ReconcileMediaMappingCommand extends Command
                     $seen[$clean] = true;
                     $consumed[$idx] = true;
                 }
+            }
+
+            // Pass 3: the same graphic carries a different hash prefix in each system, so what is left
+            // after passes 1-2 is matched on the bare file name. Runs last and only on images no exact
+            // match claimed, so a precise binding is never displaced by a fuzzy one. Each Magento image
+            // is consumed once: when the PIM holds more variants of a name than Magento has files, the
+            // surplus stays unmatched and is uploaded rather than sharing one gallery image.
+            $byBareName = [];
+
+            foreach ($media as $idx => $item) {
+                if (isset($consumed[$idx]) || !isset($item['id'], $item['file'])) {
+                    continue;
+                }
+
+                $byBareName[MediaFileName::normalize(basename((string) $item['file']))][] = $idx;
+            }
+
+            $pending = array_keys(array_diff_key($expectedNames, $seen));
+            sort($pending);
+
+            foreach ($pending as $name) {
+                $bare = MediaFileName::normalize((string) $name);
+
+                if (empty($byBareName[$bare])) {
+                    continue;
+                }
+
+                $idx = array_shift($byBareName[$bare]);
+
+                foreach (array_keys($expectedNames[$name]) as $locale) {
+                    $rows[] = [$apiUrlKey, (string) $sku, (string) $name, (int) $media[$idx]['id'], (string) $locale];
+                }
+
+                $seen[$name] = true;
+                $consumed[$idx] = true;
             }
 
             $matched = count($seen);

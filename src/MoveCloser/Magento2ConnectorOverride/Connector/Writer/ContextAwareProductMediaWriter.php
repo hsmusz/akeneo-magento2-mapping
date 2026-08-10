@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace MoveCloser\Magento2ConnectorOverride\Connector\Writer;
 
 use Akeneo\Tool\Component\Batch\Item\DataInvalidItem;
+use Akeneo\Tool\Component\Batch\Model\StepExecution;
+use MoveCloser\Magento2ConnectorOverride\Media\MediaFileName;
 use Webkul\Magento2Bundle\Connector\Writer\ProductMediaWriter;
 
 /**
@@ -34,6 +36,24 @@ class ContextAwareProductMediaWriter extends ProductMediaWriter
     private bool $mapTableEnsured = false;
 
     /**
+     * Parent SKUs already reconciled in this step, so a model with N variants is not reconciled N
+     * times - every child carries the same parent gallery.
+     *
+     * @var array<string, true>
+     */
+    private array $reconciledParents = [];
+
+    /**
+     * {@inheritdoc}
+     */
+    public function setStepExecution(StepExecution $stepExecution)
+    {
+        $this->reconciledParents = [];
+
+        return parent::setStepExecution($stepExecution);
+    }
+
+    /**
      * {@inheritdoc}
      *
      * Non-destructive, mapping-driven reconciliation. The vanilla parent::write() is intentionally
@@ -59,7 +79,8 @@ class ContextAwareProductMediaWriter extends ProductMediaWriter
             if (!empty($mainItem['parent'])) {
                 $parentSku = $mainItem['parent']['sku'] ?? $mainItem['parent']['metadata']['identifier'] ?? null;
 
-                if ($parentSku) {
+                if ($parentSku && !isset($this->reconciledParents[(string) $parentSku])) {
+                    $this->reconciledParents[(string) $parentSku] = true;
                     $this->reconcileMedia((string) $parentSku, $mainItem['parent']['media_gallery_entries'] ?? []);
                 }
             }
@@ -126,11 +147,13 @@ class ContextAwareProductMediaWriter extends ProductMediaWriter
             return;
         }
 
-        if (!$this->getMagentoProductData($sku, 'all')) {
+        $existing = $this->existingMedia($sku);
+
+        if (null === $existing) {
             return;
         }
 
-        [$existingIds, $existingByName, $existingRaw] = $this->existingMedia($sku);
+        [$existingIds, $existingByName, $existingRaw, $existingByBare] = $existing;
         $localeToStoreCodes = $this->localeToStoreCodes();
 
         // By-name adoption is only safe when this SKU is ALREADY tracked (the map has rows but this
@@ -176,11 +199,11 @@ class ContextAwareProductMediaWriter extends ProductMediaWriter
             if (isset($nameToValueId[$name]) && isset($existingIds[$nameToValueId[$name]])) {
                 // Known and still present: reuse, no re-upload.
                 $valueId = $nameToValueId[$name];
-            } elseif ($mapExistsForSku && isset($existingByName[$name])) {
+            } elseif ($mapExistsForSku && null !== ($adopted = $this->adoptExisting((string) $name, $existingByName, $existingByBare))) {
                 // Tracked SKU whose map row for this name/locale drifted: adopt the gallery image
                 // instead of duplicating. Never reached for an untracked SKU (empty map), so a manual
                 // image sharing a PIM file name is never adopted and thus never becomes deletable.
-                $valueId = $existingByName[$name];
+                $valueId = $adopted;
             } else {
                 $valueId = $this->createMedia($sku, $entry);
 
@@ -371,43 +394,77 @@ class ContextAwareProductMediaWriter extends ProductMediaWriter
     }
 
     /**
-     * Current Magento gallery of the product, indexed for reuse.
+     * Reuses an image already in the gallery: first on the exact file name, then - for a graphic the
+     * PIM and Magento store under different hash prefixes - on the bare name. A bare-name hit is
+     * consumed, so two PIM values never collapse onto one gallery image; the surplus is uploaded.
      *
-     * @return array{0: array<int, true>, 1: array<string, int>, 2: array<int, array<string, mixed>>}
-     *         [value_id => true], [file basename => value_id], [value_id => raw media entry]
+     * @param array<string, int>        $byName
+     * @param array<string, list<int>>  $byBare consumed in place
      */
-    private function existingMedia(string $sku): array
+    private function adoptExisting(string $name, array $byName, array &$byBare): ?int
+    {
+        if (isset($byName[$name])) {
+            return $byName[$name];
+        }
+
+        $bare = MediaFileName::normalize($name);
+
+        if (empty($byBare[$bare])) {
+            return null;
+        }
+
+        return (int) array_shift($byBare[$bare]);
+    }
+
+    /**
+     * Current Magento gallery of the product, indexed for reuse. Null when the gallery could not be
+     * read - the SKU is absent in Magento or the call failed - and uploading would be unsafe.
+     *
+     * This doubles as the product-exists probe: a separate full-product GET would cost one more
+     * round trip per SKU and return the whole payload only to be cast to a bool.
+     *
+     * @return array{0: array<int, true>, 1: array<string, int>, 2: array<int, array<string, mixed>>, 3: array<string, list<int>>}|null
+     *         [value_id => true], [file basename => value_id], [value_id => raw media entry],
+     *         [bare file name => [value_id, ...]]
+     */
+    private function existingMedia(string $sku): ?array
     {
         $existing = $this->getProductMedias($sku, 'all');
+
+        if (!is_array($existing) || isset($existing['error'])) {
+            return null;
+        }
+
         $ids = [];
         $byName = [];
         $rawById = [];
+        $byBare = [];
 
-        if (is_array($existing) && !isset($existing['error'])) {
-            foreach ($existing as $media) {
-                if (!isset($media['id'])) {
-                    continue;
+        foreach ($existing as $media) {
+            if (!isset($media['id'])) {
+                continue;
+            }
+
+            $valueId = (int) $media['id'];
+            $ids[$valueId] = true;
+            $rawById[$valueId] = $media;
+
+            if (!empty($media['file'])) {
+                $base = basename((string) $media['file']);
+                $byName[$base] = $valueId;
+                // Magento appends "_N" to a filename on collision; index the clean form too so a
+                // re-upload of the same PIM file is recognised instead of duplicated.
+                $clean = MediaFileName::withoutCollisionSuffix($base);
+
+                if ($clean !== $base) {
+                    $byName[$clean] = $valueId;
                 }
 
-                $valueId = (int) $media['id'];
-                $ids[$valueId] = true;
-                $rawById[$valueId] = $media;
-
-                if (!empty($media['file'])) {
-                    $base = basename((string) $media['file']);
-                    $byName[$base] = $valueId;
-                    // Magento appends "_N" to a filename on collision; index the clean form too so a
-                    // re-upload of the same PIM file is recognised instead of duplicated.
-                    $clean = preg_replace('/_\d+(\.[^.]+)$/', '$1', $base);
-
-                    if (is_string($clean) && $clean !== $base) {
-                        $byName[$clean] = $valueId;
-                    }
-                }
+                $byBare[MediaFileName::normalize($base)][] = $valueId;
             }
         }
 
-        return [$ids, $byName, $rawById];
+        return [$ids, $byName, $rawById, $byBare];
     }
 
     /**
