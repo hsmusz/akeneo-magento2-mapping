@@ -1,0 +1,6 @@
+services:
+    MoveCloser\Magento2ConnectorOverride\EventSubscriber\RenameMediaMapOnCodeChangeSubscriber:
+        tags:
+            - { name: 'kernel.event_subscriber' }
+        arguments:
+            - '@database_connection'

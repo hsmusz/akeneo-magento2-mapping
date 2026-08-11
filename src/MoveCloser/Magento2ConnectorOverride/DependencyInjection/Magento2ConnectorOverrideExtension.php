@@ -28,5 +28,6 @@ class Magento2ConnectorOverrideExtension extends Extension
 
         $loader = new Loader\YamlFileLoader($container, new FileLocator(__DIR__ . '/../Resources/config'));
         $loader->load('cli_commands.yml');
+        $loader->load('event_subscribers.yml');
     }
 }
