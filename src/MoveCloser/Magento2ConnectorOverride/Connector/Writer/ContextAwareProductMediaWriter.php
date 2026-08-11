@@ -431,8 +431,19 @@ class ContextAwareProductMediaWriter extends ProductMediaWriter
     {
         $existing = $this->getProductMedias($sku, 'all');
 
-        if (!is_array($existing) || isset($existing['error'])) {
+        if (!is_array($existing)) {
             return null;
+        }
+
+        if (isset($existing['error'])) {
+            // OAuthClient uznaje za błąd każdą odpowiedź, której `json_decode` daje wartość falsy,
+            // a pusta galeria to poprawne `[]`. Bez tego rozróżnienia produkt bez zdjęć w Magento -
+            // czyli dokładnie ten, który potrzebuje pierwszego uploadu - byłby pomijany.
+            if ('[]' !== trim((string) $this->oauthClient->getLastResponse())) {
+                return null;
+            }
+
+            $existing = [];
         }
 
         $ids = [];
