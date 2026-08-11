@@ -94,6 +94,12 @@ class RenameMediaMapOnCodeChangeSubscriber implements EventSubscriberInterface
         [$oldCode, $newCode] = $this->pending[$key];
         unset($this->pending[$key]);
 
+        // The map table is created lazily by the media writer and the reconcile command, so before
+        // the first export there is nothing to move - and querying it would break the save.
+        if (!$this->connection->createSchemaManager()->tablesExist([self::MAP_TABLE])) {
+            return;
+        }
+
         // A map already sitting on the new sku would break the unique key; it belongs to whatever
         // used that identifier before, so it is dropped rather than merged.
         $this->connection->executeStatement(
