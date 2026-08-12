@@ -96,7 +96,7 @@ class RenameMediaMapOnCodeChangeSubscriber implements EventSubscriberInterface
 
         // The map table is created lazily by the media writer and the reconcile command, so before
         // the first export there is nothing to move - and querying it would break the save.
-        if (!$this->connection->createSchemaManager()->tablesExist([self::MAP_TABLE])) {
+        if (!$this->connection->fetchOne('SHOW TABLES LIKE ?', [self::MAP_TABLE])) {
             return;
         }
 
