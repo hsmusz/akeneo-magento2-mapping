@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MoveCloser\Magento2ConnectorOverride\DependencyInjection\Compiler;
 
 use MoveCloser\Magento2ConnectorOverride\Connector\Processor\ContextAwareProductMediaProcessor;
+use MoveCloser\Magento2ConnectorOverride\Connector\Writer\ContextAwareAttributeOptionWriter;
 use MoveCloser\Magento2ConnectorOverride\Connector\Writer\ContextAwareCategoryWriter;
 use MoveCloser\Magento2ConnectorOverride\Connector\Writer\ContextAwareProductMediaWriter;
 use MoveCloser\Magento2ConnectorOverride\Connector\Writer\ContextAwareProductWriter;
@@ -13,7 +14,7 @@ use Symfony\Component\DependencyInjection\Compiler\CompilerPassInterface;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 
 /**
- * Replaces the class of Webkul's category/product writer and media writer/processor
+ * Replaces the class of Webkul's category/product/attribute-option writer and media writer/processor
  * services with the context-aware subclasses, keeping Webkul's existing argument
  * wiring intact (the overrides extend the originals with the same constructors).
  *
@@ -28,6 +29,7 @@ class OverrideWebkulWritersPass implements CompilerPassInterface
 {
     private const OVERRIDES = [
         'webkul_magento2.writer.category.api'                           => ContextAwareCategoryWriter::class,
+        'webkul_magento2.writer.attribute_option.api'                   => ContextAwareAttributeOptionWriter::class,
         'webkul_magento2.writer.product.api'                            => ContextAwareProductWriter::class,
         'webkul_magento2.writer.product_media.api'                      => ContextAwareProductMediaWriter::class,
         'webkul_magento2.processor.magento_normalization.product_media' => ContextAwareProductMediaProcessor::class,
