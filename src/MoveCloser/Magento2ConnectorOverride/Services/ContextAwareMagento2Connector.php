@@ -22,13 +22,18 @@ class ContextAwareMagento2Connector extends Magento2Connector
      * {@inheritdoc}
      *
      * libiconv turns "ó" into "'o" and Magento makes the mark a hyphen ("sk-orzane"), so accents go first.
+     * Iconv would spell out "™", "®" and "©", so they are dropped before it.
      * The regex mirrors \Magento\Framework\Filter\TranslitUrl, so Magento stores the key as sent.
      *
      * @throws \RuntimeException
      */
     public function formatUrlKey($string)
     {
-        $string = str_replace(["'", ' ø ', '×'], ['', ' ', 'x'], (string) $string);
+        $string = str_replace(
+            ["'", ' ø ', '×', '™', '®', '©'],
+            ['', ' ', 'x', ' ', ' ', ' '],
+            (string) $string
+        );
 
         $transliterated = $this->getLatinToAscii()->transliterate($string);
         if (false !== $transliterated) {

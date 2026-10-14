@@ -18,7 +18,7 @@ Hardening layer for the **Webkul Magento2 connector** (`webkul/magento2bundle`) 
 
 8. **The same product saved twice** — a store view with the locale, channel and currency of `allStoreView` gets an identical second PUT, which Magento answers with a full save that leaves only `url_key` copies and empty date rows in the store view. The product writer skips such a store view in the export jobs; category export, the grid quick export (`magento2_quick_export` bypasses the store filter) and any store view with a different locale, channel or currency are unaffected. Store-view rows written by earlier exports are not removed: rows equal to the global value are safe to delete, any other row now masks the global value the export keeps updating.
 
-9. **`url_key` broken by accented letters** - libiconv turns `ó` into `'o` and Magento makes the mark a hyphen (`skórzane` -> `sk-orzane`). `ContextAwareMagento2Connector` strips accents with ICU before iconv and cleans the key like Magento's `TranslitUrl`. Already exported products get the new key on their next export (Magento keeps a 301); categories only when created.
+9. **`url_key` broken by accented letters** - libiconv turns `ó` into `'o` and Magento makes the mark a hyphen (`skórzane` -> `sk-orzane`). `ContextAwareMagento2Connector` strips accents with ICU before iconv, drops `™`, `®` and `©` (iconv would spell them out as `tm`, `r`, `c`) and cleans the key like Magento's `TranslitUrl`. Already exported products get the new key on their next export (Magento keeps a 301); categories only when created.
 
 ## Install
 
