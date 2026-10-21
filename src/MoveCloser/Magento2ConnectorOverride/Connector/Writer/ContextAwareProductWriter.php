@@ -154,8 +154,9 @@ class ContextAwareProductWriter extends ProductWriter
     /**
      * {@inheritdoc}
      *
-     * Mirrors the parent implementation for date/simple/metric attributes; only
-     * the select/multiselect branch is hardened against unmapped options.
+     * Mirrors the parent implementation for date/simple attributes. The select/multiselect branch is
+     * hardened against unmapped options; the metric branch takes its axis codes from `custom_fields`
+     * instead of attributesAxesOptions(), which hydrates every product in the PIM to return them.
      *
      * @param array<int, array{attribute_code: string, value: mixed}> $data
      * @param array<string, string>                                   $attributeMappings
@@ -218,7 +219,7 @@ class ContextAwareProductWriter extends ProductWriter
                     $this->warnMissingOptions($attribute->getCode(), $missing);
                 }
             } elseif ('pim_catalog_metric' == $attribute->getType() && isset($this->otherSettings['metric_is_active']) && filter_var($this->otherSettings['metric_is_active'], FILTER_VALIDATE_BOOLEAN)) {
-                if (in_array($data[$index]['attribute_code'], array_keys($this->connectorService->attributesAxesOptions()))) {
+                if (in_array($data[$index]['attribute_code'], $this->connectorService->getOtherMappings()['custom_fields'] ?? [])) {
                     $attributeOption = $this->getMappingByCode(($data[$index]['value']) . '(' . $data[$index]['attribute_code'] . ')', 'option');
                     $value = $data[$index]['value'] ?? 0;
 

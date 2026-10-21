@@ -20,6 +20,8 @@ Hardening layer for the **Webkul Magento2 connector** (`webkul/magento2bundle`) 
 
 9. **`url_key` broken by accented letters** - libiconv turns `ó` into `'o` and Magento makes the mark a hyphen (`skórzane` -> `sk-orzane`). `ContextAwareMagento2Connector` strips accents with ICU before iconv, drops `™`, `®` and `©` (iconv would spell them out as `tm`, `r`, `c`) and cleans the key like Magento's `TranslitUrl`. Already exported products get the new key on their next export (Magento keeps a 301); categories only when created.
 
+10. **Product export stalls before its first product** - with `metric_is_active` on, the vanilla writer picks the metric attributes to map through `attributesAxesOptions()`, which hydrates every PIM product whose family has a metric from `custom_fields` (catalog-wide, job filters ignored) only for the attribute codes. `ContextAwareProductWriter` takes the codes straight from `custom_fields`; the mapped values are the same. The metric option export still uses `attributesAxesOptions()` for its values.
+
 ## Install
 
 In each PIM's `composer.json`, add the VCS repository (alongside the existing Webkul repo):
