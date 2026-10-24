@@ -12,6 +12,7 @@ use MoveCloser\Magento2ConnectorOverride\Connector\Writer\ContextAwareProductWri
 use MoveCloser\Magento2ConnectorOverride\Services\ContextAwareMagento2Connector;
 use Symfony\Component\DependencyInjection\Compiler\CompilerPassInterface;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
+use Symfony\Component\DependencyInjection\Reference;
 
 /**
  * Replaces the class of Webkul's category/product/attribute-option writer and media writer/processor
@@ -33,8 +34,10 @@ class OverrideWebkulWritersPass implements CompilerPassInterface
         'webkul_magento2.writer.product.api'                            => ContextAwareProductWriter::class,
         'webkul_magento2.writer.product_media.api'                      => ContextAwareProductMediaWriter::class,
         'webkul_magento2.processor.magento_normalization.product_media' => ContextAwareProductMediaProcessor::class,
-        'magento2.connector.service'                                   => ContextAwareMagento2Connector::class,
+        self::CONNECTOR_SERVICE                                         => ContextAwareMagento2Connector::class,
     ];
+
+    private const CONNECTOR_SERVICE = 'magento2.connector.service';
 
     private const LOCALIZED_MEDIA_PARAM = 'magento2_connector_override.localized_media.enabled';
 
@@ -51,6 +54,11 @@ class OverrideWebkulWritersPass implements CompilerPassInterface
             }
 
             $container->getDefinition($serviceId)->setClass($class);
+        }
+
+        if ($container->hasDefinition(self::CONNECTOR_SERVICE)) {
+            $container->getDefinition(self::CONNECTOR_SERVICE)
+                ->addMethodCall('setConnection', [new Reference('doctrine.dbal.default_connection')]);
         }
 
         if (!$container->hasParameter(self::LOCALIZED_MEDIA_PARAM)) {
