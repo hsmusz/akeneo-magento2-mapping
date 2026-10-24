@@ -222,6 +222,17 @@ class ContextAwareProductMediaWriter extends ProductMediaWriter
             $valueIdLocales[$valueId][$locale] = true;
         }
 
+        // normalize() skleja `_1` / `_2` i `_` / `__` - adopcja nie może zabrać zdjęcia innej nazwy z eksportu
+        $claimed = [];
+
+        foreach ($entries as $entry) {
+            $mappedId = $nameToValueId[$entry['content']['name'] ?? ''] ?? null;
+
+            if (null !== $mappedId) {
+                $claimed[$mappedId] = true;
+            }
+        }
+
         $markers = [];
         $sentByLocale = [];
         $exportedLocales = [];
@@ -242,7 +253,7 @@ class ContextAwareProductMediaWriter extends ProductMediaWriter
             if (isset($nameToValueId[$name]) && isset($existingIds[$nameToValueId[$name]])) {
                 // Known and still present: reuse, no re-upload.
                 $valueId = $nameToValueId[$name];
-            } elseif ($mapExistsForSku && null !== ($adopted = $this->adoptExisting((string) $name, $existingByName, $existingByBare))) {
+            } elseif ($mapExistsForSku && null !== ($adopted = $this->adoptExisting((string) $name, $existingByName, $existingByBare, $claimed))) {
                 // Tracked SKU whose map row for this name/locale drifted: adopt the gallery image
                 // instead of duplicating. Never reached for an untracked SKU (empty map), so a manual
                 // image sharing a PIM file name is never adopted and thus never becomes deletable.
@@ -260,6 +271,7 @@ class ContextAwareProductMediaWriter extends ProductMediaWriter
             }
 
             $nameToValueId[$name] = $valueId;
+            $claimed[$valueId] = true;
             $this->upsertMap($apiUrl, $sku, (string) $name, $valueId, $locale);
             $valueIdLocales[$valueId][$locale] = true;
             $sentByLocale[$locale][$name] = true;
@@ -453,25 +465,26 @@ class ContextAwareProductMediaWriter extends ProductMediaWriter
 
     /**
      * Reuses an image already in the gallery: first on the exact file name, then - for a graphic the
-     * PIM and Magento store under different hash prefixes - on the bare name. A bare-name hit is
-     * consumed, so two PIM values never collapse onto one gallery image; the surplus is uploaded.
+     * PIM and Magento store under different hash prefixes - on the bare name. A claimed image is
+     * skipped, so two PIM values never collapse onto one gallery image; the surplus is uploaded.
      *
      * @param array<string, int>        $byName
-     * @param array<string, list<int>>  $byBare consumed in place
+     * @param array<string, list<int>>  $byBare
+     * @param array<int, true>          $claimed value ids held by another name of this export
      */
-    private function adoptExisting(string $name, array $byName, array &$byBare): ?int
+    private function adoptExisting(string $name, array $byName, array $byBare, array $claimed): ?int
     {
-        if (isset($byName[$name])) {
+        if (isset($byName[$name]) && !isset($claimed[$byName[$name]])) {
             return $byName[$name];
         }
 
-        $bare = MediaFileName::normalize($name);
-
-        if (empty($byBare[$bare])) {
-            return null;
+        foreach ($byBare[MediaFileName::normalize($name)] ?? [] as $valueId) {
+            if (!isset($claimed[$valueId])) {
+                return (int) $valueId;
+            }
         }
 
-        return (int) array_shift($byBare[$bare]);
+        return null;
     }
 
     /**
