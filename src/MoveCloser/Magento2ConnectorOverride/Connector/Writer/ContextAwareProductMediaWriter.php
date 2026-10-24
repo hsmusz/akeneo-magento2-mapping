@@ -217,7 +217,11 @@ class ContextAwareProductMediaWriter extends ProductMediaWriter
             $valueId = (int) $row['value_id'];
             $locale = (string) $row['locale'];
 
-            $nameToValueId[$name] = $valueId;
+            // ta sama nazwa w kilku lokalach: wygrywa zdjęcie obecne w galerii, inaczej poszłoby drugie
+            if (!isset($existingIds[$nameToValueId[$name] ?? 0])) {
+                $nameToValueId[$name] = $valueId;
+            }
+
             $mappedByLocale[$locale][$name] = $valueId;
             $valueIdLocales[$valueId][$locale] = true;
         }

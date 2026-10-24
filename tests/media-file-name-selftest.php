@@ -59,6 +59,19 @@ check(
     MediaFileName::match(['abcdef12_x_296.jpg', 'abcdef12_y.jpg', 'abcdef12_y_1.jpg'], [7 => 'abcdef12_x_296_1_1.jpg', 8 => 'abcdef12_y_1_1.jpg'])
 );
 check(
+    'rodzeństwo: nazwa bazowa nie bierze pliku _1 przy obcym prefiksie',
+    ['0a1b2c3d4e_2025-02-78241.jpeg' => 102, 'ffee0011aa_2025-02-78241_1.jpeg' => 101, 'ffee0011ab_2025-02-78241_2.jpeg' => 103],
+    MediaFileName::match(
+        ['0a1b2c3d4e_2025-02-78241.jpeg', 'ffee0011aa_2025-02-78241_1.jpeg', 'ffee0011ab_2025-02-78241_2.jpeg'],
+        [101 => '2025-02-78241_1.jpeg', 102 => '2025-02-78241.jpeg', 103 => '2025-02-78241_2.jpeg']
+    )
+);
+check(
+    'obcy prefiks: długi sufiks `_204` to inny oryginał, bez pary',
+    [],
+    MediaFileName::match(['aaaa1111_2025-12-ZEN_20C.png'], [5 => 'bbbb2222_2025-12-ZEN_20C_204.png'])
+);
+check(
     'kolizja na nazwie z _N: foo_1 -> foo_1_1, nie foo_2',
     ['abcdef12_foo_1.jpg' => 1],
     MediaFileName::match(['abcdef12_foo_1.jpg'], [2 => 'abcdef12_foo_2.jpg', 1 => 'abcdef12_foo_1_1.jpg'])

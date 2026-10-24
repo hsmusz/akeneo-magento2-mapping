@@ -74,27 +74,27 @@ final class MediaFileName
     {
         $names = array_values(array_unique($names));
         sort($names);
-        $stripped = static fn (string $file): array => [
-            $file,
-            $once = self::withoutCollisionSuffix($file),
-            self::withoutCollisionSuffix($once),
-        ];
+        $same = static fn (string $name): string => $name;
+        $once = self::withoutCollisionSuffix(...);
+        $twice = static fn (string $file): string => self::withoutCollisionSuffix(self::withoutCollisionSuffix($file));
+        // przy obcym prefiksie tylko krótki sufiks - `_204` bywa częścią oryginału, a `_109` przy tym samym prefiksie łapie poziom wyżej
+        $short = static fn (string $file): string => (string) preg_replace(self::COLLISION_SUFFIX, '$1', $file);
         $levels = [
-            [static fn (string $name): string => $name, static fn (string $file): array => [$stripped($file)[0]]],
-            [static fn (string $name): string => $name, static fn (string $file): array => [$stripped($file)[1]]],
-            [static fn (string $name): string => $name, static fn (string $file): array => [$stripped($file)[2]]],
-            [self::sibling(...), static fn (string $file): array => array_map(self::sibling(...), $stripped($file))],
-            [self::normalize(...), static fn (string $file): array => [self::normalize($file)]],
+            [$same, $same],
+            [$same, $once],
+            [$same, $twice],
+            [self::sibling(...), self::sibling(...)],
+            [self::sibling(...), static fn (string $file): string => self::sibling($short($file))],
+            [self::sibling(...), static fn (string $file): string => self::sibling($short($short($file)))],
+            [self::normalize(...), self::normalize(...)],
         ];
         $matched = [];
 
-        foreach ($levels as [$nameKey, $fileKeys]) {
+        foreach ($levels as [$nameKey, $fileKey]) {
             $byKey = [];
 
-            foreach ($files as $fileKey => $file) {
-                foreach (array_unique($fileKeys($file)) as $key) {
-                    $byKey[$key][] = $fileKey;
-                }
+            foreach ($files as $key => $file) {
+                $byKey[$fileKey($file)][] = $key;
             }
 
             foreach ($names as $name) {
@@ -102,10 +102,10 @@ final class MediaFileName
                     continue;
                 }
 
-                foreach ($byKey[$nameKey($name)] ?? [] as $fileKey) {
-                    if (isset($files[$fileKey])) {
-                        $matched[$name] = $fileKey;
-                        unset($files[$fileKey]);
+                foreach ($byKey[$nameKey($name)] ?? [] as $key) {
+                    if (isset($files[$key])) {
+                        $matched[$name] = $key;
+                        unset($files[$key]);
                         break;
                     }
                 }
