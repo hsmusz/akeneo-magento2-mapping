@@ -111,95 +111,25 @@ class ReconcileMediaMappingCommand extends Command
                 continue;
             }
 
-            $seen = [];
-            $consumed = [];
+            $files = [];
 
-            // Pass 1: exact filename matches are authoritative and consume the Magento image, so a
-            // later "_N" strip can never re-bind that same PIM name to a different (manual) file.
             foreach ($media as $idx => $item) {
-                if (!isset($item['id'], $item['file'])) {
-                    continue;
-                }
-
-                $name = basename((string) $item['file']);
-
-                if (isset($expectedNames[$name])) {
-                    foreach (array_keys($expectedNames[$name]) as $locale) {
-                        $rows[] = [$apiUrlKey, (string) $sku, $name, (int) $item['id'], (string) $locale];
-                    }
-
-                    $seen[$name] = true;
-                    $consumed[$idx] = true;
+                if (isset($item['id'], $item['file'])) {
+                    $files[$idx] = basename((string) $item['file']);
                 }
             }
 
-            // Pass 2: Magento appends "_N" on filename collision; adopt such a renamed PIM file only
-            // when its clean name is NOT already satisfied by an exact match - otherwise a manually
-            // uploaded "foo_1.jpg" (with PIM's "foo.jpg" present) would be wrongly bound and become
-            // deletable. First writer wins per clean name, so a duplicate "_2" stays manual/protected.
-            foreach ($media as $idx => $item) {
-                if (isset($consumed[$idx]) || !isset($item['id'], $item['file'])) {
-                    continue;
-                }
+            $matches = MediaFileName::match(array_map('strval', array_keys($expectedNames)), $files);
 
-                $name = basename((string) $item['file']);
-                $clean = MediaFileName::withoutCollisionSuffix($name);
-
-                if ($clean !== $name && isset($expectedNames[$clean]) && !isset($seen[$clean])) {
-                    foreach (array_keys($expectedNames[$clean]) as $locale) {
-                        $rows[] = [$apiUrlKey, (string) $sku, $clean, (int) $item['id'], (string) $locale];
-                    }
-
-                    $seen[$clean] = true;
-                    $consumed[$idx] = true;
-                }
-            }
-
-            // Pass 3: the same graphic carries a different hash prefix in each system, so what is left
-            // after passes 1-2 is matched on the bare file name. Runs last and only on images no exact
-            // match claimed, so a precise binding is never displaced by a fuzzy one. Each Magento image
-            // is consumed once: when the PIM holds more variants of a name than Magento has files, the
-            // surplus stays unmatched and is uploaded rather than sharing one gallery image.
-            $byBareName = [];
-
-            foreach ($media as $idx => $item) {
-                if (isset($consumed[$idx]) || !isset($item['id'], $item['file'])) {
-                    continue;
-                }
-
-                $byBareName[MediaFileName::normalize(basename((string) $item['file']))][] = $idx;
-            }
-
-            $pending = array_keys(array_diff_key($expectedNames, $seen));
-            sort($pending);
-
-            foreach ($pending as $name) {
-                $bare = MediaFileName::normalize((string) $name);
-
-                if (empty($byBareName[$bare])) {
-                    continue;
-                }
-
-                $idx = array_shift($byBareName[$bare]);
-
+            foreach ($matches as $name => $idx) {
                 foreach (array_keys($expectedNames[$name]) as $locale) {
                     $rows[] = [$apiUrlKey, (string) $sku, (string) $name, (int) $media[$idx]['id'], (string) $locale];
                 }
-
-                $seen[$name] = true;
-                $consumed[$idx] = true;
             }
 
-            $matched = count($seen);
-            $manual = 0;
-
-            foreach ($media as $idx => $item) {
-                if (isset($item['id'], $item['file']) && !isset($consumed[$idx])) {
-                    ++$manual;
-                }
-            }
-
-            $missing = count(array_diff_key($expectedNames, $seen));
+            $matched = count($matches);
+            $manual = count($files) - $matched;
+            $missing = count($expectedNames) - $matched;
             $totalMapped += $matched;
             $totalManual += $manual;
             $totalMissing += $missing;

@@ -196,7 +196,7 @@ class ContextAwareProductMediaWriter extends ProductMediaWriter
             return;
         }
 
-        [$existingIds, $existingByName, $existingRaw, $existingByBare] = $existing;
+        [$existingIds, $existingFiles, $existingRaw] = $existing;
         $localeToStoreCodes = $this->localeToStoreCodes();
 
         // By-name adoption is only safe when this SKU is ALREADY tracked (the map has rows but this
@@ -222,15 +222,21 @@ class ContextAwareProductMediaWriter extends ProductMediaWriter
             $valueIdLocales[$valueId][$locale] = true;
         }
 
-        // normalize() skleja `_1` / `_2` i `_` / `__` - adopcja nie może zabrać zdjęcia innej nazwy z eksportu
-        $claimed = [];
+        $adoptions = [];
 
-        foreach ($entries as $entry) {
-            $mappedId = $nameToValueId[$entry['content']['name'] ?? ''] ?? null;
+        if ($mapExistsForSku) {
+            $pending = [];
 
-            if (null !== $mappedId) {
-                $claimed[$mappedId] = true;
+            foreach ($entries as $entry) {
+                $name = (string) ($entry['content']['name'] ?? '');
+
+                if ('' !== $name && !isset($existingIds[$nameToValueId[$name] ?? 0])) {
+                    $pending[] = $name;
+                }
             }
+
+            // zdjęcie z mapy należy do swojej nazwy, nawet wypadłej z eksportu - inaczej usunie je sprzątanie sierot
+            $adoptions = MediaFileName::match($pending, array_diff_key($existingFiles, $valueIdLocales));
         }
 
         $markers = [];
@@ -253,11 +259,11 @@ class ContextAwareProductMediaWriter extends ProductMediaWriter
             if (isset($nameToValueId[$name]) && isset($existingIds[$nameToValueId[$name]])) {
                 // Known and still present: reuse, no re-upload.
                 $valueId = $nameToValueId[$name];
-            } elseif ($mapExistsForSku && null !== ($adopted = $this->adoptExisting((string) $name, $existingByName, $existingByBare, $claimed))) {
+            } elseif (isset($adoptions[$name])) {
                 // Tracked SKU whose map row for this name/locale drifted: adopt the gallery image
                 // instead of duplicating. Never reached for an untracked SKU (empty map), so a manual
                 // image sharing a PIM file name is never adopted and thus never becomes deletable.
-                $valueId = $adopted;
+                $valueId = $adoptions[$name];
             } else {
                 $valueId = $this->createMedia($sku, $entry);
 
@@ -266,12 +272,10 @@ class ContextAwareProductMediaWriter extends ProductMediaWriter
                 }
 
                 $existingIds[$valueId] = true;
-                $existingByName[$name] = $valueId;
                 $created = true;
             }
 
             $nameToValueId[$name] = $valueId;
-            $claimed[$valueId] = true;
             $this->upsertMap($apiUrl, $sku, (string) $name, $valueId, $locale);
             $valueIdLocales[$valueId][$locale] = true;
             $sentByLocale[$locale][$name] = true;
@@ -464,36 +468,11 @@ class ContextAwareProductMediaWriter extends ProductMediaWriter
     }
 
     /**
-     * Reuses an image already in the gallery: first on the exact file name, then - for a graphic the
-     * PIM and Magento store under different hash prefixes - on the bare name. A claimed image is
-     * skipped, so two PIM values never collapse onto one gallery image; the surplus is uploaded.
-     *
-     * @param array<string, int>        $byName
-     * @param array<string, list<int>>  $byBare
-     * @param array<int, true>          $claimed value ids held by another name of this export
-     */
-    private function adoptExisting(string $name, array $byName, array $byBare, array $claimed): ?int
-    {
-        if (isset($byName[$name]) && !isset($claimed[$byName[$name]])) {
-            return $byName[$name];
-        }
-
-        foreach ($byBare[MediaFileName::normalize($name)] ?? [] as $valueId) {
-            if (!isset($claimed[$valueId])) {
-                return (int) $valueId;
-            }
-        }
-
-        return null;
-    }
-
-    /**
      * Current Magento gallery of the product, indexed for reuse. Null when the gallery could not be
      * read - the SKU is absent in Magento or the call failed - and uploading would be unsafe.
      *
-     * @return array{0: array<int, true>, 1: array<string, int>, 2: array<int, array<string, mixed>>, 3: array<string, list<int>>}|null
-     *         [value_id => true], [file basename => value_id], [value_id => raw media entry],
-     *         [bare file name => [value_id, ...]]
+     * @return array{0: array<int, true>, 1: array<int, string>, 2: array<int, array<string, mixed>>}|null
+     *         [value_id => true], [value_id => file basename], [value_id => raw media entry]
      */
     private function existingMedia(string $sku): ?array
     {
@@ -504,9 +483,8 @@ class ContextAwareProductMediaWriter extends ProductMediaWriter
         }
 
         $ids = [];
-        $byName = [];
+        $files = [];
         $rawById = [];
-        $byBare = [];
 
         foreach ($existing as $media) {
             if (!isset($media['id'])) {
@@ -518,21 +496,11 @@ class ContextAwareProductMediaWriter extends ProductMediaWriter
             $rawById[$valueId] = $media;
 
             if (!empty($media['file'])) {
-                $base = basename((string) $media['file']);
-                $byName[$base] = $valueId;
-                // Magento appends "_N" to a filename on collision; index the clean form too so a
-                // re-upload of the same PIM file is recognised instead of duplicated.
-                $clean = MediaFileName::withoutCollisionSuffix($base);
-
-                if ($clean !== $base) {
-                    $byName[$clean] = $valueId;
-                }
-
-                $byBare[MediaFileName::normalize($base)][] = $valueId;
+                $files[$valueId] = basename((string) $media['file']);
             }
         }
 
-        return [$ids, $byName, $rawById, $byBare];
+        return [$ids, $files, $rawById];
     }
 
     /**
