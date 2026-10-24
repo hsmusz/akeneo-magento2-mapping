@@ -31,7 +31,7 @@ final class MediaFileName
 
     /**
      * Sufiks odcinany tylko z nazwy pliku Magento, gdy wynik ma się zgodzić z nazwą PIM - zdjęcie
-     * wspólne dla setek SKU dostaje np. `_109`.
+     * wspólne dla setek SKU dostaje np. `_109`, a upload przez tmp potrafi dołożyć dwa (`_1_1`).
      */
     private const MAGENTO_COLLISION_SUFFIX = '/_[1-9][0-9]*(\.[^.]+)$/';
 
@@ -62,8 +62,9 @@ final class MediaFileName
 
     /**
      * Paruje nazwy PIM z plikami galerii Magento od poziomu najpewniejszego: nazwa dokładna, bez
-     * sufiksu kolizji Magento, rodzeństwo `_N`, nazwa goła. Plik trafia do co najwyżej jednej nazwy,
-     * więc dopasowanie przybliżone nie wypiera dokładnego, a nadmiar nazw zostaje bez pary (upload).
+     * jednego i bez dwóch sufiksów kolizji Magento, rodzeństwo `_N`, nazwa goła. Plik trafia do co
+     * najwyżej jednej nazwy, więc dopasowanie przybliżone nie wypiera dokładnego, a nadmiar nazw
+     * zostaje bez pary (upload).
      *
      * @param list<string>       $names nazwy PIM
      * @param array<int, string> $files klucz => nazwa pliku w Magento (basename)
@@ -73,10 +74,16 @@ final class MediaFileName
     {
         $names = array_values(array_unique($names));
         sort($names);
+        $stripped = static fn (string $file): array => [
+            $file,
+            $once = self::withoutCollisionSuffix($file),
+            self::withoutCollisionSuffix($once),
+        ];
         $levels = [
-            [static fn (string $name): string => $name, static fn (string $file): array => [$file]],
-            [static fn (string $name): string => $name, static fn (string $file): array => [self::withoutCollisionSuffix($file)]],
-            [self::sibling(...), static fn (string $file): array => [self::sibling($file), self::sibling(self::withoutCollisionSuffix($file))]],
+            [static fn (string $name): string => $name, static fn (string $file): array => [$stripped($file)[0]]],
+            [static fn (string $name): string => $name, static fn (string $file): array => [$stripped($file)[1]]],
+            [static fn (string $name): string => $name, static fn (string $file): array => [$stripped($file)[2]]],
+            [self::sibling(...), static fn (string $file): array => array_map(self::sibling(...), $stripped($file))],
             [self::normalize(...), static fn (string $file): array => [self::normalize($file)]],
         ];
         $matched = [];

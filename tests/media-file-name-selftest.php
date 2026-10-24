@@ -54,6 +54,11 @@ check(
     MediaFileName::match(['cf4e5f96a0_App_1_scaled.jpg'], [5 => 'cf4e5f96a0_App_1_scaled_109.jpg'])
 );
 check(
+    'dwa sufiksy Magento (tmp + katalog): _296_1_1, a własne _1 w nazwie PIM ma pierwszeństwo',
+    ['abcdef12_x_296.jpg' => 7, 'abcdef12_y_1.jpg' => 8],
+    MediaFileName::match(['abcdef12_x_296.jpg', 'abcdef12_y.jpg', 'abcdef12_y_1.jpg'], [7 => 'abcdef12_x_296_1_1.jpg', 8 => 'abcdef12_y_1_1.jpg'])
+);
+check(
     'kolizja na nazwie z _N: foo_1 -> foo_1_1, nie foo_2',
     ['abcdef12_foo_1.jpg' => 1],
     MediaFileName::match(['abcdef12_foo_1.jpg'], [2 => 'abcdef12_foo_2.jpg', 1 => 'abcdef12_foo_1_1.jpg'])
