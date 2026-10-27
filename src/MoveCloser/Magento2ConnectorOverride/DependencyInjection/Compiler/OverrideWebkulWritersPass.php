@@ -35,7 +35,7 @@ class OverrideWebkulWritersPass implements CompilerPassInterface
     private const OVERRIDES = [
         'webkul_magento2.writer.category.api'                           => ContextAwareCategoryWriter::class,
         'webkul_magento2.writer.attribute_option.api'                   => ContextAwareAttributeOptionWriter::class,
-        'webkul_magento2.writer.product.api'                            => ContextAwareProductWriter::class,
+        self::PRODUCT_WRITER                                            => ContextAwareProductWriter::class,
         'webkul_magento2.writer.product_media.api'                      => ContextAwareProductMediaWriter::class,
         'webkul_magento2.processor.magento_normalization.product_media' => ContextAwareProductMediaProcessor::class,
         self::CONNECTOR_SERVICE                                         => ContextAwareMagento2Connector::class,
@@ -46,6 +46,10 @@ class OverrideWebkulWritersPass implements CompilerPassInterface
     private const LOCALIZED_MEDIA_PARAM = 'magento2_connector_override.localized_media.enabled';
 
     private const STEP_CLASS_PARAM = 'webkul_magento2.export.step';
+
+    private const PRODUCT_WRITER = 'webkul_magento2.writer.product.api';
+
+    private const STORE_VIEW_DEDUPE_PARAM = 'magento2_connector_override.store_view_dedupe.enabled';
 
     private const LOCALIZED_MEDIA_AWARE = [
         'webkul_magento2.writer.product_media.api',
@@ -69,6 +73,11 @@ class OverrideWebkulWritersPass implements CompilerPassInterface
         if ($container->hasDefinition(self::CONNECTOR_SERVICE)) {
             $container->getDefinition(self::CONNECTOR_SERVICE)
                 ->addMethodCall('setConnection', [new Reference('doctrine.dbal.default_connection')]);
+        }
+
+        if ($container->hasDefinition(self::PRODUCT_WRITER) && $container->hasParameter(self::STORE_VIEW_DEDUPE_PARAM)) {
+            $container->getDefinition(self::PRODUCT_WRITER)
+                ->addMethodCall('setStoreViewDedupeEnabled', ['%' . self::STORE_VIEW_DEDUPE_PARAM . '%']);
         }
 
         if (!$container->hasParameter(self::LOCALIZED_MEDIA_PARAM)) {

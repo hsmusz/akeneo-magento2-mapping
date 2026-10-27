@@ -16,7 +16,7 @@ Hardening layer for the **Webkul Magento2 connector** (`webkul/magento2bundle`) 
 
 7. **A GET before every product PUT** — the vanilla writer fetches the product before each PUT but reads the response only to keep a configurable's existing child links. `ContextAwareProductWriter` fetches configurables only; every other type goes straight to the PUT with the same payload.
 
-8. **The same product saved twice** — a store view with the locale, channel and currency of `allStoreView` gets an identical second PUT, which Magento answers with a full save that leaves only `url_key` copies and empty date rows in the store view. The product writer skips such a store view in the export jobs; category export, the grid quick export (`magento2_quick_export` bypasses the store filter) and any store view with a different locale, channel or currency are unaffected. Store-view rows written by earlier exports are not removed: rows equal to the global value are safe to delete, any other row now masks the global value the export keeps updating.
+8. **The same product saved twice** (opt-in, `store_view_dedupe.enabled`) — a store view with the locale, channel and currency of `allStoreView` gets an identical second PUT, which Magento answers with a full save that leaves only `url_key` copies and empty date rows in the store view. With the flag on, the product writer skips such a store view in the export jobs; it is meant for a Magento where one PIM owns the default scope (one brand, one language). In a multi-brand Magento keep it off: the default scope is shared, so each store view keeps its own values; category export, the grid quick export (`magento2_quick_export` bypasses the store filter) and any store view with a different locale, channel or currency are unaffected. Store-view rows written by earlier exports are not removed: rows equal to the global value are safe to delete, any other row now masks the global value the export keeps updating.
 
 9. **`url_key` broken by accented letters** - libiconv turns `ó` into `'o` and Magento makes the mark a hyphen (`skórzane` -> `sk-orzane`). `ContextAwareMagento2Connector` strips accents with ICU before iconv, drops `™`, `®` and `©` (iconv would spell them out as `tm`, `r`, `c`) and cleans the key like Magento's `TranslitUrl`. Already exported products get the new key on their next export (Magento keeps a 301); categories only when created.
 
@@ -95,6 +95,18 @@ magento2_connector_override:
     localized_media:
         enabled: '%env(bool:MAGENTO2_LOCALIZED_MEDIA)%'
 ```
+
+The store-view dedupe of item 8 is off by default since v1.3.0 (on in v1.1.5 - v1.2.0). A PIM that
+owns its Magento alone turns it back on:
+
+```yaml
+magento2_connector_override:
+    store_view_dedupe:
+        enabled: true
+```
+
+The option exists from v1.3.0 on; an older package rejects the unknown key, so add it together with
+the upgrade.
 
 ## Usage
 

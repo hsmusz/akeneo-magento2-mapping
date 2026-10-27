@@ -53,6 +53,13 @@ class ContextAwareProductWriter extends ProductWriter
      */
     private array $lastResults = [];
 
+    private bool $storeViewDedupeEnabled = false;
+
+    public function setStoreViewDedupeEnabled(bool $enabled): void
+    {
+        $this->storeViewDedupeEnabled = $enabled;
+    }
+
     /**
      * {@inheritdoc}
      *
@@ -273,8 +280,8 @@ class ContextAwareProductWriter extends ProductWriter
      * {@inheritdoc}
      *
      * A store view sharing locale, channel and currency with "all" would get the same payload again: a full
-     * product save that leaves only url_key copies and empty date rows in the store view. Product export
-     * skips it; the category export still needs that store view.
+     * product save that leaves only url_key copies and empty date rows in the store view. With
+     * store_view_dedupe on, product export skips it; the category export still needs that store view.
      *
      * @param array<string, array<string, mixed>> $storeMappings
      * @param list<string>                        $locales
@@ -287,7 +294,7 @@ class ContextAwareProductWriter extends ProductWriter
         $storeMappings = parent::updateStoreMappingValueByLocalesChannels($storeMappings, $locales, $channels);
         $all = $storeMappings[self::DEFAULT_STORE_VIEW_CODE] ?? null;
 
-        if (null === $all) {
+        if (!$this->storeViewDedupeEnabled || null === $all) {
             return $storeMappings;
         }
 

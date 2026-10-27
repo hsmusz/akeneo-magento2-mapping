@@ -31,6 +31,11 @@ class Magento2ConnectorOverrideExtension extends Extension
             $config['localized_media']['enabled']
         );
 
+        $container->setParameter(
+            'magento2_connector_override.store_view_dedupe.enabled',
+            $config['store_view_dedupe']['enabled']
+        );
+
         $loader = new Loader\YamlFileLoader($container, new FileLocator(__DIR__ . '/../Resources/config'));
         $loader->load('cli_commands.yml');
         $loader->load('event_subscribers.yml');

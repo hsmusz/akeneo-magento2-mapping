@@ -166,6 +166,18 @@ check(
     call($writer, 'formatData', $product($skuEn, 'C-2'), 'ecommerce', 'pl_PL', null)
 );
 
+$storeMappings = [
+    'allStoreView' => ['locale' => 'pl_PL', 'channel' => 'ecommerce', 'currency' => 'PLN'],
+    'lr_pl'        => ['locale' => 'pl_PL', 'channel' => 'ecommerce', 'currency' => 'PLN'],
+    'lr_en'        => ['locale' => 'en_GB', 'channel' => 'ecommerce', 'currency' => 'EUR'],
+];
+$storeViews = static fn (): array => array_keys(call($writer, 'updateStoreMappingValueByLocalesChannels', $storeMappings, ['pl_PL', 'en_GB'], ['ecommerce']));
+
+check('store view równy allStoreView: domyślnie eksportowany', ['allStoreView', 'lr_pl', 'lr_en'], $storeViews());
+$writer->setStoreViewDedupeEnabled(true);
+check('store view równy allStoreView: pominięty z store_view_dedupe', ['allStoreView', 'lr_en'], $storeViews());
+$writer->setStoreViewDedupeEnabled(false);
+
 setProperty($writer, 'stepExecution', stepExecution('magento2_quick_export'));
 check('quick export: pierwsza wartość niezależnie od locale', 'SKU-EN', call($writer, 'resolvedSku', $skuEn, 'ecommerce', 'pl_PL', null));
 
