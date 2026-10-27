@@ -10,6 +10,7 @@ use MoveCloser\Magento2ConnectorOverride\Connector\Writer\ContextAwareCategoryWr
 use MoveCloser\Magento2ConnectorOverride\Connector\Writer\ContextAwareProductMediaWriter;
 use MoveCloser\Magento2ConnectorOverride\Connector\Writer\ContextAwareProductWriter;
 use MoveCloser\Magento2ConnectorOverride\Services\ContextAwareMagento2Connector;
+use MoveCloser\Magento2ConnectorOverride\Step\ErrorReportingStep;
 use Symfony\Component\DependencyInjection\Compiler\CompilerPassInterface;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Reference;
@@ -25,6 +26,9 @@ use Symfony\Component\DependencyInjection\Reference;
  *
  * The media services additionally receive the localized_media switch, so a PIM exporting into a
  * Magento without MoveCloser_LocalizedMedia can turn the localized layer off in its own config.
+ *
+ * Every Webkul export step takes its class from `webkul_magento2.export.step`, so that parameter
+ * swaps them all to ErrorReportingStep.
  */
 class OverrideWebkulWritersPass implements CompilerPassInterface
 {
@@ -41,6 +45,8 @@ class OverrideWebkulWritersPass implements CompilerPassInterface
 
     private const LOCALIZED_MEDIA_PARAM = 'magento2_connector_override.localized_media.enabled';
 
+    private const STEP_CLASS_PARAM = 'webkul_magento2.export.step';
+
     private const LOCALIZED_MEDIA_AWARE = [
         'webkul_magento2.writer.product_media.api',
         'webkul_magento2.processor.magento_normalization.product_media',
@@ -54,6 +60,10 @@ class OverrideWebkulWritersPass implements CompilerPassInterface
             }
 
             $container->getDefinition($serviceId)->setClass($class);
+        }
+
+        if ($container->hasParameter(self::STEP_CLASS_PARAM)) {
+            $container->setParameter(self::STEP_CLASS_PARAM, ErrorReportingStep::class);
         }
 
         if ($container->hasDefinition(self::CONNECTOR_SERVICE)) {

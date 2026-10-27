@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MoveCloser\Magento2ConnectorOverride\Connector\Writer;
 
 use Akeneo\Tool\Component\Batch\Item\DataInvalidItem;
+use Webkul\Magento2Bundle\Component\Normalizer\PropertiesNormalizer;
 use Webkul\Magento2Bundle\Connector\Writer\ProductWriter;
 
 /**
@@ -26,14 +27,99 @@ use Webkul\Magento2Bundle\Connector\Writer\ProductWriter;
  * source instead of being papered over. Reconcile the missing mappings with
  * `magento2:reconcile-option-mappings` and re-run the product export.
  *
+ * A SKU mapped to a localizable attribute that has no value for a store view's locale makes the
+ * vanilla writer send the raw value array as the SKU and die with a TypeError. Such a product is
+ * reported as a job warning and skipped in that store view, or in all of them when the default
+ * locale has no SKU.
+ *
  * @author MoveCloser
  */
 class ContextAwareProductWriter extends ProductWriter
 {
+    private const SKIP_STORE_VIEW = '__skip_store_view';
+
     /**
      * @var array<string, true> de-duplicates missing-option warnings within a run
      */
     private array $loggedMissingOptions = [];
+
+    /**
+     * @var array<string, true> de-duplicates missing-SKU warnings within a run
+     */
+    private array $loggedMissingSkus = [];
+
+    /**
+     * @var array<string, mixed> last addProduct() result per localized SKU within one write()
+     */
+    private array $lastResults = [];
+
+    /**
+     * {@inheritdoc}
+     *
+     * Items whose SKU has no value for the default store view are reported and dropped before the
+     * vanilla loop, which cannot create a product without its default-scope SKU.
+     *
+     * @param list<array<string, mixed>> $items
+     */
+    public function write(array $items)
+    {
+        $this->lastResults = [];
+        $kept = [];
+
+        foreach ($items as $item) {
+            $skip = $this->missingDefaultSku($item);
+
+            if (null === $skip) {
+                $kept[] = $item;
+
+                continue;
+            }
+
+            $this->warnMissingSku($skip, null);
+            $this->stepExecution->incrementSummaryInfo('skipped');
+        }
+
+        return parent::write($kept);
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * With no SKU for this locale the item is formatted with its default-store-view SKU, which keeps
+     * the vanilla post-loop linking and mapping valid, and marked so addProduct() never sends it.
+     *
+     * @param array<string, mixed> $item
+     *
+     * @return array<string, mixed>
+     */
+    protected function formatData($item, $channel, $locale, $storeViewCurrency)
+    {
+        if (!is_array($item['sku'] ?? null)) {
+            return parent::formatData($item, $channel, $locale, $storeViewCurrency);
+        }
+
+        $sku = $this->resolvedSku($item['sku'], $channel, $locale, $storeViewCurrency);
+
+        if (null !== $sku) {
+            $this->lastResults[$sku] ??= null;
+
+            return parent::formatData($item, $channel, $locale, $storeViewCurrency);
+        }
+
+        $skip = $this->skipInfo($item, $locale);
+        $defaultSku = $this->resolvedSku($item['sku'], $this->defaultChannel, $this->defaultLocale, null);
+
+        // reached only from subclass paths outside write(); they fall back to write(), which drops the item
+        if (null === $defaultSku) {
+            return [self::SKIP_STORE_VIEW => $skip];
+        }
+
+        $item['sku'] = $defaultSku;
+        $formatted = parent::formatData($item, $channel, $locale, $storeViewCurrency);
+        $formatted[self::SKIP_STORE_VIEW] = $skip;
+
+        return $formatted;
+    }
 
     /**
      * {@inheritdoc}
@@ -45,21 +131,113 @@ class ContextAwareProductWriter extends ProductWriter
      * (the SKU is the PIM "ID (NIE EDYTOWAC)" field, always present and unique). The pl_PL name is
      * never shown for products that are not in the PL website, and real per-store names still win.
      *
+     * A product marked by formatData() is not sent; the last result for its SKU stands in for the
+     * vanilla post-loop, which reads only the last store view's result.
+     *
      * @param array<string, mixed> $productData
      * @param mixed                $parent
      * @param string               $storeViewCode
      */
     protected function addProduct($productData, $parent, $storeViewCode)
     {
-        if (
-            isset($productData[self::AKENEO_ENTITY_NAME]) && is_array($productData[self::AKENEO_ENTITY_NAME])
-            && empty($productData[self::AKENEO_ENTITY_NAME]['name'])
-            && !empty($productData[self::AKENEO_ENTITY_NAME]['sku'])
-        ) {
-            $productData[self::AKENEO_ENTITY_NAME]['name'] = $productData[self::AKENEO_ENTITY_NAME]['sku'];
+        $product = $productData[self::AKENEO_ENTITY_NAME] ?? null;
+
+        if (is_array($product) && isset($product[self::SKIP_STORE_VIEW])) {
+            $sku = $product['sku'] ?? null;
+
+            if (null === $sku) {
+                return ['error' => 'no SKU for the default store view'];
+            }
+
+            $this->warnMissingSku($product[self::SKIP_STORE_VIEW], (string) $storeViewCode);
+
+            return $this->lastResults[$sku] ?? ['error' => sprintf('no SKU for store view "%s"', $storeViewCode)];
         }
 
-        return parent::addProduct($productData, $parent, $storeViewCode);
+        if (
+            is_array($product)
+            && empty($product['name'])
+            && !empty($product['sku'])
+        ) {
+            $productData[self::AKENEO_ENTITY_NAME]['name'] = $product['sku'];
+        }
+
+        $result = parent::addProduct($productData, $parent, $storeViewCode);
+
+        if (is_array($product) && is_scalar($product['sku'] ?? null) && array_key_exists((string) $product['sku'], $this->lastResults)) {
+            $this->lastResults[(string) $product['sku']] = $result;
+        }
+
+        return $result;
+    }
+
+    /**
+     * Same truthiness as the vanilla formatData(), which drops a falsy SKU and falls back to the raw array.
+     */
+    private function resolvedSku(mixed $value, mixed $channel, mixed $locale, mixed $currency): ?string
+    {
+        $sku = $this->formatValueForMagento($value, $channel, $locale, $currency);
+
+        return is_scalar($sku) && $sku ? (string) $sku : null;
+    }
+
+    /**
+     * @param array<string, mixed> $item
+     *
+     * @return array{identifier: string, attribute: string, locale: string}|null
+     */
+    private function missingDefaultSku(array $item): ?array
+    {
+        if (
+            is_array($item['sku'] ?? null)
+            && null === $this->resolvedSku($item['sku'], $this->defaultChannel, $this->defaultLocale, null)
+        ) {
+            return $this->skipInfo($item, (string) $this->defaultLocale);
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array<string, mixed> $item
+     *
+     * @return array{identifier: string, attribute: string, locale: string}
+     */
+    private function skipInfo(array $item, mixed $locale): array
+    {
+        return [
+            'identifier' => (string) ($item[PropertiesNormalizer::FIELD_META_DATA][PropertiesNormalizer::FIELD_IDENTIFIER] ?? $item['code'] ?? '?'),
+            'attribute'  => (string) ($this->changeAttributeMappingsBasedOnProductType($item['type_id'] ?? null)['sku'] ?? 'sku'),
+            'locale'     => (string) $locale,
+        ];
+    }
+
+    /**
+     * @param array{identifier: string, attribute: string, locale: string} $skip
+     * @param string|null                                                  $storeViewCode null: all store views
+     */
+    private function warnMissingSku(array $skip, ?string $storeViewCode): void
+    {
+        $key = $skip['identifier'] . '|' . ($storeViewCode ?? '*');
+
+        if (isset($this->loggedMissingSkus[$key])) {
+            return;
+        }
+
+        $this->loggedMissingSkus[$key] = true;
+        $where = null === $storeViewCode ? 'in any store view' : sprintf('to store view "%s"', $storeViewCode);
+
+        $this->stepExecution->addWarning(
+            sprintf(
+                'Product "%s" not exported %s: SKU attribute "%s" has no value for locale %s.',
+                $skip['identifier'],
+                $where,
+                $skip['attribute'],
+                $skip['locale']
+            ),
+            [],
+            new DataInvalidItem($skip + ['store_view' => $storeViewCode ?? 'all'])
+        );
     }
 
     /**
